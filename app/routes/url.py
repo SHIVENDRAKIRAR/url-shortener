@@ -14,6 +14,22 @@ router = APIRouter()
 load_dotenv()
 BASE_URL = BASE_URL = os.getenv("BASE_URL")
 @router.post("/shorten")
+@router.get("/my-urls", response_model=list[URLResponse])
+def my_urls(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    urls = db.query(URL).filter(URL.user_id == current_user.id).all()
+    return [
+        {
+            "id": u.id,
+            "original_url": u.original_url,
+            "short_url": f"{BASE_URL}/{u.short_code}",
+            "click_count": u.click_count,
+            "created_at": u.created_at
+        }
+        for u in urls
+    ]
 def shorten_url(
     payload: URLCreate,
     db: Session = Depends(get_db),
@@ -67,20 +83,3 @@ def redirect_url(
     return RedirectResponse(
         url=url_entry.original_url
     )
-
-@router.get("/my-urls", response_model=list[URLResponse])
-def my_urls(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    urls = db.query(URL).filter(URL.user_id == current_user.id).all()
-    return [
-        {
-            "id": u.id,
-            "original_url": u.original_url,
-            "short_url": f"{BASE_URL}/{u.short_code}",
-            "click_count": u.click_count,
-            "created_at": u.created_at
-        }
-        for u in urls
-    ]
