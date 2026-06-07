@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends , HTTPException
 from sqlalchemy.orm import Session
-
 from app.database.db import get_db
 from app.models.url import URL
 from app.schemas.url import URLCreate
 from app.utils.base62 import encode
 from fastapi.responses import RedirectResponse
+import os
 
 router = APIRouter()
 
@@ -17,7 +17,7 @@ def shorten_url(
 ):
     # Create DB object
     new_url = URL(
-        original_url=payload.url
+        original_url=str(payload.url)
     )
 
     # Save to database
@@ -39,7 +39,7 @@ def shorten_url(
     return {
         "id": new_url.id,
         "url": new_url.original_url,
-        "short_code": f"http://127.0.0.1:8000/{new_url.short_code}"
+        "short_code": f'{os.getenv("BASE_URL")}/{new_url.short_code}'
     }
 
 @router.get("/{short_code}")
@@ -52,7 +52,7 @@ def redirect_url(
     ).first()
 
     if not url_entry:
-        return {"error": "Short URL not found"}
+        raise HTTPException(status_code=404, detail="Short URL not found")
 
     url_entry.click_count += 1
     db.commit()
