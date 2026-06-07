@@ -3,13 +3,17 @@ from sqlalchemy import text
 
 from app.database.db import engine
 from app.models.url import Base
+from app.models.user import User
 from app.routes.url import router as url_router
+from app.routes.auth import router as auth_router
 
 app = FastAPI()
 
 Base.metadata.create_all(bind=engine)
+User.metadata.create_all(bind=engine)
 
 app.include_router(url_router)
+app.include_router(auth_router)
 
 
 @app.get("/")
