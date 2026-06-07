@@ -5,11 +5,12 @@ from app.models.url import URL
 from app.schemas.url import URLCreate
 from app.utils.base62 import encode
 from fastapi.responses import RedirectResponse
+from dotenv import load_dotenv
 import os
 
 router = APIRouter()
-
-
+load_dotenv()
+BASE_URL = BASE_URL = os.getenv("BASE_URL")
 @router.post("/shorten")
 def shorten_url(
     payload: URLCreate,
@@ -38,9 +39,12 @@ def shorten_url(
 
     return {
         "id": new_url.id,
-        "url": new_url.original_url,
-        "short_code": f'{os.getenv("BASE_URL")}/{new_url.short_code}'
+        "original_url": new_url.original_url,
+        "short_url": f"{BASE_URL}/{new_url.short_code}",
+        "click_count": new_url.click_count,
+        "created_at": new_url.created_at
     }
+
 
 @router.get("/{short_code}")
 def redirect_url(

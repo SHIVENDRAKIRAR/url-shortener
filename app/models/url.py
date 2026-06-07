@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, DateTime
 from sqlalchemy.orm import declarative_base
-from datetime import datetime
+from datetime import datetime , timezone
 
 Base = declarative_base()
 
@@ -12,4 +12,4 @@ class URL(Base):
     original_url = Column(String, nullable=False)
     short_code = Column(String, unique=True, nullable=True)
     click_count = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
