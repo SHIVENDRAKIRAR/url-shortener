@@ -22,10 +22,12 @@ def register(payload: UserCreate, db: Session = Depends(get_db)):
     db.refresh(user)
     return user
 
+from fastapi.security import OAuth2PasswordRequestForm
+
 @router.post("/login", response_model=TokenResponse)
-def login(payload: UserCreate, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == payload.email).first()
-    if not user or not verify_password(payload.password, user.hashed_password):
+def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == form_data.username).first()
+    if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
     token = create_access_token({"sub": str(user.id)})

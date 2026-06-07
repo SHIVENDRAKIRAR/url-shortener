@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends , HTTPException
 from sqlalchemy.orm import Session
 from app.database.db import get_db
 from app.models.url import URL
-from app.schemas.url import URLCreate
+from app.schemas.url import URLCreate, URLResponse
 from app.utils.base62 import encode
 from fastapi.responses import RedirectResponse
 from dotenv import load_dotenv
@@ -67,3 +67,20 @@ def redirect_url(
     return RedirectResponse(
         url=url_entry.original_url
     )
+
+@router.get("/my-urls", response_model=list[URLResponse])
+def my_urls(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    urls = db.query(URL).filter(URL.user_id == current_user.id).all()
+    return [
+        {
+            "id": u.id,
+            "original_url": u.original_url,
+            "short_url": f"{BASE_URL}/{u.short_code}",
+            "click_count": u.click_count,
+            "created_at": u.created_at
+        }
+        for u in urls
+    ]
