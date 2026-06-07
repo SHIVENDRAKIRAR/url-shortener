@@ -7,6 +7,8 @@ from app.utils.base62 import encode
 from fastapi.responses import RedirectResponse
 from dotenv import load_dotenv
 import os
+from app.utils.auth import get_current_user
+from app.models.user import User
 
 router = APIRouter()
 load_dotenv()
@@ -14,11 +16,12 @@ BASE_URL = BASE_URL = os.getenv("BASE_URL")
 @router.post("/shorten")
 def shorten_url(
     payload: URLCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    # Create DB object
     new_url = URL(
-        original_url=str(payload.url)
+        original_url=str(payload.url),
+        user_id=current_user.id
     )
 
     # Save to database

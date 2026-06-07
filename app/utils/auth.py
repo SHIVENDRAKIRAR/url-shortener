@@ -3,6 +3,10 @@ from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 import os
 import bcrypt
+from fastapi import Depends, HTTPException
+from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy.orm import Session
+from app.database.db import get_db
 
 load_dotenv()
 
@@ -24,3 +28,18 @@ def create_access_token(data: dict) -> str:
 
 def decode_access_token(token: str) -> dict:
     return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    try:
+        payload = decode_access_token(token)
+        user_id = int(payload.get("sub"))
+    except:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    
+    from app.models.user import User
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    return user
