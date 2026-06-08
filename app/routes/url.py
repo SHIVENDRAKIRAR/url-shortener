@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends , HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from app.database.db import get_db
 from app.models.url import URL
@@ -6,14 +6,16 @@ from app.schemas.url import URLCreate, URLResponse
 from app.utils.base62 import encode
 from fastapi.responses import RedirectResponse
 from dotenv import load_dotenv
-import os
 from app.utils.auth import get_current_user
 from app.models.user import User
+from app.utils.limiter import limiter
+import os
 
 router = APIRouter()
 load_dotenv()
-BASE_URL = BASE_URL = os.getenv("BASE_URL")
-@router.post("/shorten")
+BASE_URL = os.getenv("BASE_URL")
+
+
 @router.get("/my-urls", response_model=list[URLResponse])
 def my_urls(
     db: Session = Depends(get_db),
@@ -30,7 +32,12 @@ def my_urls(
         }
         for u in urls
     ]
+
+
+@router.post("/shorten", response_model=URLResponse)
+@limiter.limit("5/minute")
 def shorten_url(
+    request: Request,
     payload: URLCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -39,21 +46,12 @@ def shorten_url(
         original_url=str(payload.url),
         user_id=current_user.id
     )
-
-    # Save to database
     db.add(new_url)
     db.commit()
-
-    # Get latest DB values (especially generated id)
     db.refresh(new_url)
 
-    # Generate short code
     short_code = encode(new_url.id)
-
-    # Update object
     new_url.short_code = short_code
-
-    # Save update to DB
     db.commit()
 
     return {
@@ -70,9 +68,7 @@ def redirect_url(
     short_code: str,
     db: Session = Depends(get_db)
 ):
-    url_entry = db.query(URL).filter(
-        URL.short_code == short_code
-    ).first()
+    url_entry = db.query(URL).filter(URL.short_code == short_code).first()
 
     if not url_entry:
         raise HTTPException(status_code=404, detail="Short URL not found")
@@ -80,6 +76,4 @@ def redirect_url(
     url_entry.click_count += 1
     db.commit()
 
-    return RedirectResponse(
-        url=url_entry.original_url
-    )
+    return RedirectResponse(url=url_entry.original_url)
