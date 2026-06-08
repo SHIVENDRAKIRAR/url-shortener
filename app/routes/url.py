@@ -10,6 +10,8 @@ from app.utils.auth import get_current_user
 from app.models.user import User
 from app.utils.limiter import limiter
 import os
+from app.utils.cache import get_cached_url, set_cached_url
+from app.utils.logger import logger
 
 router = APIRouter()
 load_dotenv()
@@ -73,6 +75,7 @@ def redirect_url(
     # Check Redis first
     cached = get_cached_url(short_code)
     if cached:
+        logger.info(f"Cache HIT: {short_code}")
         return RedirectResponse(url=cached.decode("utf-8"))
 
     # Not in cache — hit DB
@@ -86,5 +89,6 @@ def redirect_url(
 
     url_entry.click_count += 1
     db.commit()
+    logger.info(f"Cache MISS: {short_code} — querying DB")
 
     return RedirectResponse(url=url_entry.original_url)
