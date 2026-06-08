@@ -63,15 +63,26 @@ def shorten_url(
     }
 
 
+from app.utils.cache import get_cached_url, set_cached_url
+
 @router.get("/{short_code}")
 def redirect_url(
     short_code: str,
     db: Session = Depends(get_db)
 ):
+    # Check Redis first
+    cached = get_cached_url(short_code)
+    if cached:
+        return RedirectResponse(url=cached.decode("utf-8"))
+
+    # Not in cache — hit DB
     url_entry = db.query(URL).filter(URL.short_code == short_code).first()
 
     if not url_entry:
         raise HTTPException(status_code=404, detail="Short URL not found")
+
+    # Save to Redis for next time
+    set_cached_url(short_code, url_entry.original_url)
 
     url_entry.click_count += 1
     db.commit()
