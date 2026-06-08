@@ -76,7 +76,7 @@ def redirect_url(
     cached = get_cached_url(short_code)
     if cached:
         logger.info(f"Cache HIT: {short_code}")
-        return RedirectResponse(url=cached.decode("utf-8"))
+        return RedirectResponse(url=cached)
 
     # Not in cache — hit DB
     url_entry = db.query(URL).filter(URL.short_code == short_code).first()

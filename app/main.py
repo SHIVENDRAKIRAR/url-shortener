@@ -15,9 +15,6 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 User.metadata.create_all(bind=engine)
 Base.metadata.create_all(bind=engine)
-app.include_router(url_router)
-app.include_router(auth_router)
-
 
 @app.get("/")
 def home():
@@ -31,3 +28,6 @@ def test_db():
         return {"message": "Database connected successfully"}
     except Exception as e:
         return {"error": str(e)}
+
+app.include_router(auth_router)
+app.include_router(url_router)  # always last — has /{short_code}

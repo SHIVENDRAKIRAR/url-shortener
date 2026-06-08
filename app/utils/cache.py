@@ -1,11 +1,10 @@
-import redis
+from upstash_redis import Redis
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
-client = redis.from_url(REDIS_URL)
+client = Redis.from_env()
 
 def get_cached_url(short_code: str):
     return client.get(short_code)
