@@ -20,10 +20,16 @@ BASE_URL = os.getenv("BASE_URL")
 
 @router.get("/my-urls", response_model=list[URLResponse])
 def my_urls(
+    page: int = 1,
+    limit: int = 10,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    urls = db.query(URL).filter(URL.user_id == current_user.id).all()
+    skip = (page - 1) * limit
+    urls = db.query(URL).filter(
+        URL.user_id == current_user.id
+    ).offset(skip).limit(limit).all()
+
     return [
         {
             "id": u.id,
