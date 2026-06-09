@@ -133,3 +133,26 @@ def delete_url(
     db.delete(url_entry)
     db.commit()
     return {"message": "URL deleted successfully"}
+
+
+@router.get("/urls/{url_id}/stats")
+def url_stats(
+    url_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    url_entry = db.query(URL).filter(
+        URL.id == url_id,
+        URL.user_id == current_user.id
+    ).first()
+
+    if not url_entry:
+        raise HTTPException(status_code=404, detail="URL not found")
+
+    return {
+        "click_count": url_entry.click_count,
+        "created_at": url_entry.created_at,
+        "short_code": url_entry.short_code,
+        "original_url": url_entry.original_url,
+        "short_url": f"{BASE_URL}/{url_entry.short_code}"
+    }
