@@ -109,3 +109,21 @@ def redirect_url(
     logger.info(f"Cache MISS: {short_code} — querying DB")
 
     return RedirectResponse(url=url_entry.original_url)
+
+@router.delete("/urls/{url_id}")
+def delete_url(
+    url_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    url_entry = db.query(URL).filter(
+        URL.id == url_id,
+        URL.user_id == current_user.id
+    ).first()
+
+    if not url_entry:
+        raise HTTPException(status_code=404, detail="URL not found")
+
+    db.delete(url_entry)
+    db.commit()
+    return {"message": "URL deleted successfully"}
