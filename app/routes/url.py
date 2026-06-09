@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.database.db import get_db
 from app.models.url import URL
 from app.schemas.url import URLCreate, URLResponse
-from app.utils.base62 import encode
+from app.utils.base62 import generate_short_code
 from fastapi.responses import RedirectResponse
 from dotenv import load_dotenv
 from app.utils.auth import get_current_user
@@ -44,17 +44,34 @@ def shorten_url(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    # Deduplication check
+    existing = db.query(URL).filter(
+        URL.original_url == str(payload.url),
+        URL.user_id == current_user.id
+    ).first()
+    if existing:
+        return {
+            "id": existing.id,
+            "original_url": existing.original_url,
+            "short_url": f"{BASE_URL}/{existing.short_code}",
+            "click_count": existing.click_count,
+            "created_at": existing.created_at
+        }
+
+    # Generate unique short code
+    while True:
+        short_code = generate_short_code()
+        if not db.query(URL).filter(URL.short_code == short_code).first():
+            break
+
     new_url = URL(
         original_url=str(payload.url),
+        short_code=short_code,
         user_id=current_user.id
     )
     db.add(new_url)
     db.commit()
     db.refresh(new_url)
-
-    short_code = encode(new_url.id)
-    new_url.short_code = short_code
-    db.commit()
 
     return {
         "id": new_url.id,
