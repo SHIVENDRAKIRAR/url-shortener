@@ -1,23 +1,52 @@
+import io
+
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import RedirectResponse, StreamingResponse
+import qrcode
 from sqlalchemy.orm import Session
+from datetime import datetime, timezone, timedelta
+from typing import Optional
+import os
+from dotenv import load_dotenv
+
 from app.database.db import get_db
 from app.models.url import URL
 from app.schemas.url import URLCreate, URLResponse
 from app.utils.base62 import generate_short_code
-from fastapi.responses import RedirectResponse
-from dotenv import load_dotenv
-from app.utils.auth import get_current_user
+from app.utils.auth import get_current_user, get_optional_user
 from app.models.user import User
 from app.utils.limiter import limiter
-import os
-from app.utils.cache import get_cached_url, set_cached_url
+from app.utils.cache import get_cached_url, set_cached_url, delete_cached_url
 from app.utils.logger import logger
 
 router = APIRouter()
 load_dotenv()
 BASE_URL = os.getenv("BASE_URL")
 
+RESERVED = {"login", "register", "docs", "openapi.json", "my-urls", "auth", "admin", "shorten", "urls"}
 
+def compute_status(u: URL) -> str:
+    if u.is_deleted:
+        return "deleted"
+    if u.expires_at and u.expires_at < datetime.now(timezone.utc):
+        return "expired"
+    return "active"
+
+def url_to_response(u: URL) -> dict:
+    return {
+        "id": u.id,
+        "original_url": u.original_url,
+        "short_url": f"{BASE_URL}/{u.short_code}",
+        "click_count": u.click_count,
+        "created_at": u.created_at,
+        "expires_at": u.expires_at,
+        "is_deleted": u.is_deleted,
+        "last_visited_at": u.last_visited_at,
+        "status": compute_status(u)
+    }
+
+
+# ── Dashboard ──────────────────────────────────────────────
 @router.get("/my-urls", response_model=list[URLResponse])
 def my_urls(
     page: int = 1,
@@ -29,93 +58,111 @@ def my_urls(
     urls = db.query(URL).filter(
         URL.user_id == current_user.id
     ).offset(skip).limit(limit).all()
-
-    return [
-        {
-            "id": u.id,
-            "original_url": u.original_url,
-            "short_url": f"{BASE_URL}/{u.short_code}",
-            "click_count": u.click_count,
-            "created_at": u.created_at
-        }
-        for u in urls
-    ]
+    return [url_to_response(u) for u in urls]
 
 
+# ── Shorten ─────────────────────────────────────────────────
 @router.post("/shorten", response_model=URLResponse)
 @limiter.limit("5/minute")
 def shorten_url(
     request: Request,
     payload: URLCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: Optional[User] = Depends(get_optional_user)  # None if guest
 ):
-    # Deduplication check
-    existing = db.query(URL).filter(
-        URL.original_url == str(payload.url),
-        URL.user_id == current_user.id
-    ).first()
-    if existing:
-        return {
-            "id": existing.id,
-            "original_url": existing.original_url,
-            "short_url": f"{BASE_URL}/{existing.short_code}",
-            "click_count": existing.click_count,
-            "created_at": existing.created_at
-        }
+    now = datetime.now(timezone.utc)
+    is_guest = current_user is None
 
-    # Generate unique short code
-    while True:
-        short_code = generate_short_code()
-        if not db.query(URL).filter(URL.short_code == short_code).first():
-            break
+    # Custom alias — logged in only
+    if payload.custom_alias and is_guest:
+        raise HTTPException(status_code=401, detail="Login required for custom alias")
+
+    # Validate alias
+    if payload.custom_alias:
+        if payload.custom_alias in RESERVED:
+            raise HTTPException(status_code=400, detail="Alias is reserved")
+        existing_alias = db.query(URL).filter(URL.custom_alias == payload.custom_alias).first()
+        if existing_alias:
+            raise HTTPException(status_code=409, detail="Alias already taken")
+
+    # Custom expiry — logged in only
+    if payload.expires_in and is_guest:
+        raise HTTPException(status_code=401, detail="Login required for custom expiry")
+
+    # Compute expires_at
+    if is_guest:
+        expires_at = now + timedelta(hours=24)
+    elif payload.expires_in:
+        expires_at = now + timedelta(days=payload.expires_in)
+    else:
+        expires_at = None  # never expire
+
+    # Deduplication — logged in users only
+    if not is_guest:
+        existing = db.query(URL).filter(
+            URL.original_url == str(payload.url),
+            URL.user_id == current_user.id,
+            URL.is_deleted == False
+        ).first()
+        if existing:
+            return url_to_response(existing)
+
+    # Short code
+    if payload.custom_alias:
+        short_code = payload.custom_alias
+    else:
+        while True:
+            short_code = generate_short_code()
+            if not db.query(URL).filter(URL.short_code == short_code).first():
+                break
 
     new_url = URL(
         original_url=str(payload.url),
         short_code=short_code,
-        user_id=current_user.id
+        custom_alias=payload.custom_alias,
+        user_id=current_user.id if not is_guest else None,
+        expires_at=expires_at
     )
     db.add(new_url)
     db.commit()
     db.refresh(new_url)
 
-    return {
-        "id": new_url.id,
-        "original_url": new_url.original_url,
-        "short_url": f"{BASE_URL}/{new_url.short_code}",
-        "click_count": new_url.click_count,
-        "created_at": new_url.created_at
-    }
+    return url_to_response(new_url)
 
 
-from app.utils.cache import get_cached_url, set_cached_url
-
+# ── Redirect ────────────────────────────────────────────────
 @router.get("/{short_code}")
-def redirect_url(
-    short_code: str,
-    db: Session = Depends(get_db)
-):
-    # Check Redis first
+def redirect_url(short_code: str, db: Session = Depends(get_db)):
     cached = get_cached_url(short_code)
     if cached:
         logger.info(f"Cache HIT: {short_code}")
-        return RedirectResponse(url=cached)
-
-    # Not in cache — hit DB
-    url_entry = db.query(URL).filter(URL.short_code == short_code).first()
+        # still need DB for expiry/delete check
+        url_entry = db.query(URL).filter(URL.short_code == short_code).first()
+    else:
+        logger.info(f"Cache MISS: {short_code}")
+        url_entry = db.query(URL).filter(URL.short_code == short_code).first()
+        if url_entry:
+            set_cached_url(short_code, url_entry.original_url)
 
     if not url_entry:
         raise HTTPException(status_code=404, detail="Short URL not found")
 
-    # Save to Redis for next time
-    set_cached_url(short_code, url_entry.original_url)
+    if url_entry.is_deleted:
+        raise HTTPException(status_code=404, detail="Short URL not found")
 
+    if url_entry.expires_at and url_entry.expires_at < datetime.now(timezone.utc):
+        delete_cached_url(short_code)  # clean Redis
+        raise HTTPException(status_code=410, detail="Link has expired")
+
+    # Update stats
     url_entry.click_count += 1
+    url_entry.last_visited_at = datetime.now(timezone.utc)
     db.commit()
-    logger.info(f"Cache MISS: {short_code} — querying DB")
 
-    return RedirectResponse(url=url_entry.original_url)
+    return RedirectResponse(url=url_entry.original_url, status_code=307)
 
+
+# ── Soft Delete ─────────────────────────────────────────────
 @router.delete("/urls/{url_id}")
 def delete_url(
     url_id: int,
@@ -130,11 +177,12 @@ def delete_url(
     if not url_entry:
         raise HTTPException(status_code=404, detail="URL not found")
 
-    db.delete(url_entry)
+    url_entry.is_deleted = True
     db.commit()
     return {"message": "URL deleted successfully"}
 
 
+# ── Stats ────────────────────────────────────────────────────
 @router.get("/urls/{url_id}/stats")
 def url_stats(
     url_id: int,
@@ -149,10 +197,34 @@ def url_stats(
     if not url_entry:
         raise HTTPException(status_code=404, detail="URL not found")
 
-    return {
-        "click_count": url_entry.click_count,
-        "created_at": url_entry.created_at,
-        "short_code": url_entry.short_code,
-        "original_url": url_entry.original_url,
-        "short_url": f"{BASE_URL}/{url_entry.short_code}"
-    }
+    return url_to_response(url_entry)
+
+@router.get("/urls/{url_id}/qr")
+def get_qr_code(
+    url_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    url_entry = db.query(URL).filter(
+        URL.id == url_id,
+        URL.user_id == current_user.id
+    ).first()
+
+    if not url_entry:
+        raise HTTPException(status_code=404, detail="URL not found")
+
+    if url_entry.is_deleted:
+        raise HTTPException(status_code=404, detail="URL not found")
+
+    # Generate QR
+    qr = qrcode.QRCode(box_size=10, border=4)
+    qr.add_data(f"{BASE_URL}/{url_entry.short_code}")
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+
+    # Return as PNG stream
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+
+    return StreamingResponse(buf, media_type="image/png")

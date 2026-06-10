@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime , ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime , ForeignKey , Boolean
 from sqlalchemy.orm import declarative_base
 from datetime import datetime , timezone
 
@@ -14,3 +14,7 @@ class URL(Base):
     click_count = Column(Integer, default=0)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    custom_alias = Column(String(50), nullable=True, unique=True)
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    last_visited_at = Column(DateTime(timezone=True), nullable=True)
