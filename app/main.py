@@ -8,6 +8,7 @@ from app.routes.auth import router as auth_router
 from app.utils.limiter import limiter
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 app.state.limiter = limiter
@@ -31,3 +32,11 @@ def test_db():
 
 app.include_router(auth_router)
 app.include_router(url_router)  # always last — has /{short_code}
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # tighten this in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)

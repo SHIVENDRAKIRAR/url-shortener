@@ -97,8 +97,7 @@ def shorten_url(
     else:
         expires_at = None  # never expire
 
-    # Deduplication — logged in users only
-    if not is_guest:
+    if not is_guest and not payload.custom_alias:
         existing = db.query(URL).filter(
             URL.original_url == str(payload.url),
             URL.user_id == current_user.id,

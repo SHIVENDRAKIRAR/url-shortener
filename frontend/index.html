@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>URL Shortener</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <nav class="navbar">
+    <div class="nav-logo">URL Shortener</div>
+    <div class="nav-links">
+      <a href="index.html" class="active">Home</a>
+      <a href="dashboard.html" id="nav-dashboard" style="display:none">Dashboard</a>
+      <a href="login.html" id="nav-login">Login</a>
+      <button class="btn-logout" id="nav-logout" style="display:none" onclick="logout()">Logout</button>
+      <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">🌙</button>
+    </div>
+  </nav>
+
+  <main class="hero">
+    <div class="hero-text">
+      <h1>Short links.<br/>Big reach.</h1>
+      <p>Paste a long URL and get a clean short link instantly. No account needed.</p>
+    </div>
+
+    <div class="shorten-card">
+      <div class="input-row">
+        <input type="text" id="url-input" placeholder="Paste your URL here (e.g. google.com)" />
+        <button class="btn-primary" onclick="shortenUrl()">Shorten</button>
+      </div>
+
+      <!-- Logged-in extras -->
+      <div class="extras" id="logged-in-extras" style="display:none">
+        <input type="text" id="alias-input" placeholder="Custom alias (optional)" maxlength="50" />
+        <select id="expiry-select">
+          <option value="">Never expire</option>
+          <option value="1">Expires in 1 day</option>
+          <option value="7">Expires in 7 days</option>
+          <option value="30">Expires in 30 days</option>
+        </select>
+      </div>
+
+      <p class="guest-note" id="guest-note">
+        <a href="login.html">Log in</a> for custom aliases, expiry control &amp; link dashboard.
+      </p>
+
+      <!-- Result box -->
+      <div class="result-box" id="result-box" style="display:none">
+        <div class="result-row">
+          <span class="result-label">Your short link</span>
+          <div class="result-actions">
+            <a id="result-link" href="#" target="_blank"></a>
+            <button class="btn-text" onclick="copyLink()">Copy</button>
+            <button class="btn-text" id="qr-btn" onclick="showQR()" style="display:none">QR Code</button>
+          </div>
+        </div>
+        <div id="qr-container" style="display:none; margin-top:12px; text-align:center">
+          <img id="qr-img" src="" alt="QR Code" style="width:160px;height:160px;border-radius:8px;" />
+          <br/>
+          <a id="qr-download" download="qr.png" class="btn-secondary" style="margin-top:8px;display:inline-block">Download QR</a>
+        </div>
+      </div>
+
+      <div class="error-box" id="error-box" style="display:none"></div>
+    </div>
+
+    <div class="features">
+      <div class="feature"><span>⚡ Instant redirect</span></div>
+      <div class="feature"><span>📊 Click analytics</span></div>
+      <div class="feature"><span>⏱ Link expiry</span></div>
+      <div class="feature"><span>📷 QR generation</span></div>
+    </div>
+  </main>
+
+  <script src="api.js"></script>
+  <script src="app.js"></script>
+  <script>
+    initNav();
+    initTheme();
+
+    async function shortenUrl() {
+      let url = document.getElementById('url-input').value.trim();
+      if (!url) return showError('Please enter a URL.');
+
+      // auto-add https if missing
+      if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+
+      const alias = document.getElementById('alias-input')?.value.trim() || null;
+      const expiresIn = document.getElementById('expiry-select')?.value || null;
+
+      const body = { url };
+      if (alias) body.custom_alias = alias;
+      if (expiresIn) body.expires_in = parseInt(expiresIn);
+
+      const btn = document.querySelector('.btn-primary');
+      btn.textContent = 'Shortening...';
+      btn.disabled = true;
+      hideError();
+
+      try {
+        const data = await api('/shorten', 'POST', body);
+        showResult(data);
+      } catch (e) {
+        showError(friendlyError(e.message));
+      } finally {
+        btn.textContent = 'Shorten';
+        btn.disabled = false;
+      }
+    }
+
+    function showResult(data) {
+      window._lastResult = data;
+      const link = document.getElementById('result-link');
+      link.href = data.short_url;
+      link.textContent = data.short_url;
+      document.getElementById('result-box').style.display = 'block';
+      document.getElementById('qr-container').style.display = 'none';
+      // show QR button only for logged-in users (they have an id)
+      const token = localStorage.getItem('token');
+      document.getElementById('qr-btn').style.display = token ? 'inline-block' : 'none';
+    }
+
+    function copyLink() {
+      navigator.clipboard.writeText(document.getElementById('result-link').textContent);
+      showToast('Copied to clipboard!');
+    }
+
+    async function showQR() {
+      const data = window._lastResult;
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${BASE_URL}/urls/${data.id}/qr`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) return showToast('Could not generate QR code.');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      document.getElementById('qr-img').src = url;
+      document.getElementById('qr-download').href = url;
+      document.getElementById('qr-container').style.display = 'block';
+    }
+
+    // enter key
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && document.activeElement.id === 'url-input') shortenUrl();
+    });
+  </script>
+</body>
+</html>
