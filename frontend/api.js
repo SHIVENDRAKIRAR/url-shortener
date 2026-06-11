@@ -1,5 +1,5 @@
 // Config ──────────────────────────────────────────────────
-const BASE_URL = 'https://url-shortener-0izm.onrender.com/';
+const BASE_URL = 'https://url-shortener-0izm.onrender.com';
 
 // API helper ───────────────────────────────────────────────
 async function api(path, method = 'GET', body = null) {
