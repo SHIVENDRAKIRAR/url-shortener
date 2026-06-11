@@ -1,8 +1,7 @@
-// ── Config ──────────────────────────────────────────────────
-// Change this to your Render URL when deploying
-const BASE_URL = 'http://127.0.0.1:8000';
+// Config ──────────────────────────────────────────────────
+const BASE_URL = 'https://url-shortener-0izm.onrender.com/';
 
-// ── API helper ───────────────────────────────────────────────
+// API helper ───────────────────────────────────────────────
 async function api(path, method = 'GET', body = null) {
   const token = localStorage.getItem('token');
   const headers = { 'Content-Type': 'application/json' };

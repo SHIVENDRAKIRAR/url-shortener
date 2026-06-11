@@ -22,7 +22,11 @@ app = FastAPI(
 # Middleware — must be registered before routers
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://sinly.netlify.app",
+        "http://localhost:5500",  # for local dev
+        "http://127.0.0.1:5500",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
