@@ -5,6 +5,7 @@ A production-style full-stack URL shortener built with **FastAPI, PostgreSQL, Re
 Supports guest and authenticated users with features such as **custom aliases, configurable expiry, analytics, QR generation, caching, and rate limiting**.
 
 **Live Demo:** https://sinly.netlify.app/
+
 **API Documentation:** https://url-shortener-0izm.onrender.com/docs
 
 ---
