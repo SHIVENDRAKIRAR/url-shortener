@@ -1,8 +1,6 @@
 from sqlalchemy import Column, Integer, String, DateTime , ForeignKey , Boolean
-from sqlalchemy.orm import declarative_base
 from datetime import datetime , timezone
-
-Base = declarative_base()
+from app.database import Base
 
 
 class URL(Base):
